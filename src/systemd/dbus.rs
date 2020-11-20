@@ -1,4 +1,5 @@
 extern crate dbus;
+
 use std::path::Path;
 
 /// Takes a systemd dbus function as input and returns the result as a `dbus::Message`.
@@ -28,7 +29,8 @@ pub struct SystemdUnit {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum UnitType { Automount, Busname, Mount, Path, Scope, Service, Slice, Socket, Target, Timer }
+pub enum UnitType { Automount, Busname, Mount, Path, Scope, Service, Slice, Socket, Target, Timer, Other }
+
 impl UnitType {
     /// Takes the pathname of the unit as input to determine what type of unit it is.
     pub fn new(pathname: &str) -> UnitType {
@@ -43,13 +45,14 @@ impl UnitType {
             "socket" => UnitType::Socket,
             "target" => UnitType::Target,
             "timer" => UnitType::Timer,
-            _ => panic!("Unknown Type: {}", pathname),
+            _ => UnitType::Other,
         }
     }
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum UnitState { Bad, Disabled, Enabled, Indirect, Linked, Masked, Static }
+pub enum UnitState { Bad, Disabled, Enabled, Indirect, Linked, Masked, Static, Alias, Generated, Transient }
+
 impl UnitState {
     /// Takes the string containing the state information from the dbus message and converts it
     /// into a UnitType by matching the first character.
@@ -63,6 +66,9 @@ impl UnitState {
             'l' => UnitState::Linked,
             'm' => UnitState::Masked,
             'b' => UnitState::Bad,
+            'a' => UnitState::Alias,
+            'g' => UnitState::Generated,
+            't' => UnitState::Transient,
             _ => panic!("Unknown State: {}", x),
         }
     }
@@ -74,7 +80,7 @@ pub fn list_unit_files() -> Vec<SystemdUnit> {
     fn parse_message(input: &str) -> Vec<SystemdUnit> {
         let message = {
             let mut output: String = input.chars().skip(7).collect();
-            let len = output.len()-10;
+            let len = output.len() - 10;
             output.truncate(len);
             output
         };
@@ -87,7 +93,7 @@ pub fn list_unit_files() -> Vec<SystemdUnit> {
             let name: String = name.chars().skip(14).take_while(|x| *x != '\"').collect();
             let utype = UnitType::new(&name);
             let state = UnitState::new(iterator.next().unwrap());
-            systemd_units.push(SystemdUnit{name: name, state: state, utype: utype});
+            systemd_units.push(SystemdUnit { name: name, state: state, utype: utype });
         }
 
         systemd_units.sort_by(|a, b| a.name.cmp(&b.name));
@@ -140,7 +146,7 @@ pub fn enable_unit_files(unit: &str) -> Option<String> {
                 println!("{} has been enabled", unit);
             }
             None
-        },
+        }
         Err(reply) => {
             let error = format!("Error enabling {}:\n{:?}", unit, reply);
             println!("{}", error);
@@ -162,7 +168,7 @@ pub fn disable_unit_files(unit: &str) -> Option<String> {
                 println!("{} has been disabled", unit);
             }
             None
-        },
+        }
         Err(reply) => {
             let error = format!("Error disabling {}:\n{:?}", unit, reply);
             println!("{}", error);
@@ -179,13 +185,12 @@ pub fn start_unit(unit: &str) -> Option<String> {
         Ok(_) => {
             println!("{} successfully started", unit);
             None
-        },
+        }
         Err(error) => {
             let output = format!("{} failed to start:\n{:?}", unit, error);
             println!("{}", output);
             Some(output)
         }
-
     }
 }
 
@@ -197,7 +202,7 @@ pub fn stop_unit(unit: &str) -> Option<String> {
         Ok(_) => {
             println!("{} successfully stopped", unit);
             None
-        },
+        }
         Err(error) => {
             let output = format!("{} failed to stop:\n{:?}", unit, error);
             println!("{}", output);
